@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-
+import cv2
 
 class PathIndex:
 
@@ -138,7 +138,7 @@ def to_transition_matrix(affinity_dense, beta, times):
 
     return trans_mat
 
-def propagate_to_edge(x, edge, radius=5, beta=10, exp_times=8):
+def propagate_to_edge(x, edge, radius=5, beta=10, exp_times=8, name=None):
 
     height, width = x.shape[-2:]
 
@@ -146,22 +146,29 @@ def propagate_to_edge(x, edge, radius=5, beta=10, exp_times=8):
     ver_padded = height+radius
 
     path_index = PathIndex(radius=radius, default_size=(ver_padded, hor_padded))
-
+    # boundary map
     edge_padded = F.pad(edge, (radius, radius, 0, radius), mode='constant', value=1.0)
+    
     sparse_aff = edge_to_affinity(torch.unsqueeze(edge_padded, 0),
                                   path_index.path_indices)
-
+    
     dense_aff = affinity_sparse2dense(sparse_aff, path_index.src_indices,
                                       path_index.dst_indices, ver_padded * hor_padded)
     dense_aff = dense_aff.view(ver_padded, hor_padded, ver_padded, hor_padded)
     dense_aff = dense_aff[:-radius, radius:-radius, :-radius, radius:-radius]
     dense_aff = dense_aff.reshape(height * width, height * width)
-
+    # [H/4*W/4, H/4*W/4]
     trans_mat = to_transition_matrix(dense_aff, beta=beta, times=exp_times)
-
+    print("Graph")
+    print(trans_mat.shape)
+    np.save('./Graph/'+name, trans_mat.cpu().numpy())
+    
+    # [object class, H/4, W/4] ex: [2, H/4, W/4]
     x = x.view(-1, height, width) * (1 - edge)
+    
+
 
     rw = torch.matmul(x.view(-1, height * width), trans_mat)
     rw = rw.view(rw.size(0), 1, height, width)
 
-    return rw
+    return rw, x

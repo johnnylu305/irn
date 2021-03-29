@@ -8,12 +8,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # Environment
-    parser.add_argument("--num_workers", default=os.cpu_count()//2, type=int)
+    parser.add_argument("--num_workers", default=2, type=int)
     parser.add_argument("--voc12_root", required=True, type=str,
                         help="Path to VOC 2012 Devkit, must contain ./JPEGImages as subdirectory.")
 
     # Dataset
-    parser.add_argument("--train_list", default="voc12/train_aug.txt", type=str)
+    # train_aug.txt
+    parser.add_argument("--train_list", default="voc12/train.txt", type=str)
     parser.add_argument("--val_list", default="voc12/val.txt", type=str)
     parser.add_argument("--infer_list", default="voc12/train.txt", type=str,
                         help="voc12/train_aug.txt to train a fully supervised model, "
@@ -61,15 +62,15 @@ if __name__ == '__main__':
     parser.add_argument("--ins_seg_out_dir", default="result/ins_seg", type=str)
 
     # Step
-    parser.add_argument("--train_cam_pass", default=True)
+    parser.add_argument("--train_cam_pass", default=False)
     parser.add_argument("--make_cam_pass", default=True)
-    parser.add_argument("--eval_cam_pass", default=True)
-    parser.add_argument("--cam_to_ir_label_pass", default=True)
-    parser.add_argument("--train_irn_pass", default=True)
-    parser.add_argument("--make_ins_seg_pass", default=True)
-    parser.add_argument("--eval_ins_seg_pass", default=True)
+    parser.add_argument("--eval_cam_pass", default=False)
+    parser.add_argument("--cam_to_ir_label_pass", default=False)
+    parser.add_argument("--train_irn_pass", default=False)
+    parser.add_argument("--make_ins_seg_pass", default=False)
+    parser.add_argument("--eval_ins_seg_pass", default=False)
     parser.add_argument("--make_sem_seg_pass", default=True)
-    parser.add_argument("--eval_sem_seg_pass", default=True)
+    parser.add_argument("--eval_sem_seg_pass", default=False)
 
     args = parser.parse_args()
 

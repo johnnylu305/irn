@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from net import resnet50
-
+import cv2
 
 class Net(nn.Module):
 
@@ -107,7 +108,9 @@ class Net(nn.Module):
                 return input
             return input - self.running_mean.view(1, 2, 1, 1)
 
-    def forward(self, x):
+    def forward(self, x, name=None):
+        x_ = x.cpu().detach().numpy()
+        
         x1 = self.stage1(x).detach()
         x2 = self.stage2(x1).detach()
         x3 = self.stage3(x2).detach()
@@ -119,7 +122,16 @@ class Net(nn.Module):
         edge3 = self.fc_edge3(x3)[..., :edge2.size(2), :edge2.size(3)]
         edge4 = self.fc_edge4(x4)[..., :edge2.size(2), :edge2.size(3)]
         edge5 = self.fc_edge5(x5)[..., :edge2.size(2), :edge2.size(3)]
+       
+        
+        print(name)
+
         edge_out = self.fc_edge6(torch.cat([edge1, edge2, edge3, edge4, edge5], dim=1))
+       
+        features = torch.cat([edge1, edge2, edge3, edge4, edge5], dim=1)
+       
+        features = features*self.fc_edge6.weight
+        
 
         dp1 = self.fc_dp1(x1)
         dp2 = self.fc_dp2(x2)
@@ -129,8 +141,11 @@ class Net(nn.Module):
 
         dp_up3 = self.fc_dp6(torch.cat([dp3, dp4, dp5], dim=1))[..., :dp2.size(2), :dp2.size(3)]
         dp_out = self.fc_dp7(torch.cat([dp1, dp2, dp_up3], dim=1))
-
-        return edge_out, dp_out
+       
+        if name == None:
+            return edge_out, dp_out
+        else:
+            return edge_out, dp_out, features
 
     def trainable_parameters(self):
         return (tuple(self.edge_layers.parameters()),
@@ -160,8 +175,10 @@ class AffinityDisplacementLoss(Net):
             torch.unsqueeze(torch.unsqueeze(torch.from_numpy(path_index.search_dst).transpose(1, 0), 0), -1).float())
 
     def to_affinity(self, edge):
+       
         aff_list = []
         edge = edge.view(edge.size(0), -1)
+       
 
         for i in range(self.n_path_lengths):
             ind = self._buffers[AffinityDisplacementLoss.path_indices_prefix + str(i)]
@@ -171,6 +188,8 @@ class AffinityDisplacementLoss(Net):
             aff = torch.squeeze(1 - F.max_pool2d(dist, (dist.size(2), 1)), dim=2)
             aff_list.append(aff)
         aff_cat = torch.cat(aff_list, dim=1)
+
+       
 
         return aff_cat
 
@@ -220,17 +239,40 @@ class EdgeDisplacement(Net):
         self.crop_size = crop_size
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x, name=None):
         feat_size = (x.size(2)-1)//self.stride+1, (x.size(3)-1)//self.stride+1
 
         x = F.pad(x, [0, self.crop_size-x.size(3), 0, self.crop_size-x.size(2)])
-        edge_out, dp_out = super().forward(x)
-        edge_out = edge_out[..., :feat_size[0], :feat_size[1]]
-        dp_out = dp_out[..., :feat_size[0], :feat_size[1]]
+        if name == None:
+            edge_out, dp_out = super().forward(x)
+            edge_out = edge_out[..., :feat_size[0], :feat_size[1]]
+            dp_out = dp_out[..., :feat_size[0], :feat_size[1]]
+            edge_out = torch.sigmoid(edge_out[0]/2 + edge_out[1].flip(-1)/2)
+            dp_out = dp_out[0]
 
-        edge_out = torch.sigmoid(edge_out[0]/2 + edge_out[1].flip(-1)/2)
-        dp_out = dp_out[0]
-
-        return edge_out, dp_out
-
+            return edge_out, dp_out
+        else:
+            edge_out, dp_out, features = super().forward(x, name)
+           
+           
+            e = edge_out[0]/2 + edge_out[1].flip(-1)/2
+            e = e.cpu().numpy()
+            e = np.transpose(e, (1, 2, 0))
+            e = cv2.normalize(e, None, 0, 255, cv2.NORM_MINMAX)
+            cv2.imwrite("./B/"+name+'.png', e)
+            edge_out = edge_out[..., :feat_size[0], :feat_size[1]]
+            features = features[..., :feat_size[0], :feat_size[1]]
+            dp_out = dp_out[..., :feat_size[0], :feat_size[1]]
+            edge_out = torch.sigmoid(edge_out[0]/2 + edge_out[1].flip(-1)/2)
+            
+            
+            features = features[0]/2 + features[1].flip(-1)/2
+           
+            dp_out = dp_out[0]
+            
+            features = features.unsqueeze(0)
+            print("Features")
+            print(features.shape)
+            np.save('./Features/'+name, features.cpu().numpy())
+            return edge_out, dp_out
 
